@@ -140,9 +140,7 @@ async function loadStaff() {
       .limit(20),
     db
       .from("semester_submission")
-      .select(
-        "*, scholar(scholar_id,student_id,full_name,policy_id,scholarship_policy(policy_name))",
-      )
+      .select("*")
       .eq("academic_year", "2026-2027")
       .order("submitted_at", { ascending: false }),
   ]);
@@ -159,21 +157,31 @@ function renderStaff() {
     search = $("#searchInput").value.toLowerCase(),
     prog = $("#programFilter").value,
     comp = $("#complianceFilter").value;
+  const scholarsById = new Map(
+    scholars.map((student) => [student.scholar_id, student]),
+  );
+  const getScholar = (submission) => scholarsById.get(submission.scholar_id);
   let filtered = submissions.filter(
-    (s) =>
-      s.semester === term &&
-      (!search ||
-        `${s.scholar?.full_name || ""} ${s.scholar?.student_id || ""}`
-          .toLowerCase()
-          .includes(search)) &&
-      (!prog || s.scholar?.policy_id === prog) &&
-      (!comp || s.compliance_status === comp),
+    (s) => {
+      const student = getScholar(s);
+      return (
+        s.semester === term &&
+        (!search ||
+          `${student?.full_name || ""} ${student?.student_id || ""}`
+            .toLowerCase()
+            .includes(search)) &&
+        (!prog || student?.policy_id === prog) &&
+        (!comp || s.compliance_status === comp)
+      );
+    },
   );
   $("#submissionRows").innerHTML =
     filtered
       .map(
-        (s) =>
-          `<tr><td><b>${esc(s.scholar?.full_name)}</b><small>${esc(s.scholar?.student_id)}</small></td><td>${esc(s.scholar?.scholarship_policy?.policy_name || "—")}</td><td>${esc(s.academic_year)} / ${esc(s.semester)}</td><td>${Number(s.gwa).toFixed(2)}</td><td>${tag(s.verification_status)}</td><td>${tag(s.compliance_status)}${(s.deficiency_reasons || []).length ? `<div class="reason">${esc(s.deficiency_reasons.join("; "))}</div>` : ""}</td><td>${tag(s.renewal_decision)}</td><td><div class="action-row"><button class="secondary" data-a="verify" data-id="${s.submission_id}">Verify</button><button class="secondary" data-a="evaluate" data-id="${s.submission_id}">Evaluate</button><button class="secondary" data-a="decision" data-id="${s.submission_id}">Decision</button></div></td></tr>`,
+        (s) => {
+          const student = getScholar(s);
+          return `<tr><td><b>${esc(student?.full_name || "Unknown scholar")}</b><small>${esc(student?.student_id || "—")}</small></td><td>${esc(student?.scholarship_policy?.policy_name || "—")}</td><td>${esc(s.academic_year)} / ${esc(s.semester)}</td><td>${Number(s.gwa).toFixed(2)}</td><td>${tag(s.verification_status)}</td><td>${tag(s.compliance_status)}${(s.deficiency_reasons || []).length ? `<div class="reason">${esc(s.deficiency_reasons.join("; "))}</div>` : ""}</td><td>${tag(s.renewal_decision)}</td><td><div class="action-row"><button class="secondary" data-a="verify" data-id="${s.submission_id}">Verify</button><button class="secondary" data-a="evaluate" data-id="${s.submission_id}">Evaluate</button><button class="secondary" data-a="decision" data-id="${s.submission_id}">Decision</button></div></td></tr>`;
+        },
       )
       .join("") ||
     '<tr><td colspan="8">No submissions match these filters.</td></tr>';
@@ -267,7 +275,8 @@ $("#logoutBtn").addEventListener("click", async () => {
 });
 $("#submissionForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.currentTarget));
+  const form = e.currentTarget;
+  const f = Object.fromEntries(new FormData(form));
   const n = ["gwa", "units", "failed", "incomplete", "dropped"];
   n.forEach((k) => (f[k] = Number(f[k])));
   if (
@@ -296,8 +305,8 @@ $("#submissionForm").addEventListener("submit", async (e) => {
     if (error) throw error;
     $("#submitMessage").textContent =
       "Submission saved. Status: Pending verification.";
-    e.currentTarget.reset();
-    e.currentTarget.elements.academicYear.value = "2026-2027";
+    form.reset();
+    form.elements.academicYear.value = "2026-2027";
     await loadScholar();
     toast("Academic summary submitted.");
   } catch (err) {
